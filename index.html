@@ -1,78 +1,113 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0A0A0A"><link rel="stylesheet" href="style.css"><script>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0A0A0A"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"><link rel="stylesheet" href="style.css"><script>
 window.addEventListener('error',function(e){
- var t=e.target;if(t&&t.src&&t.src.indexOf('/vendor/')>-1)return;var m=(t&&t.src)?'Could not load '+t.src.split('/').slice(-2).join('/'):(e.message||'Unknown error');
- var d=document.createElement('div');d.style.cssText='padding:16px;margin:16px;border:2px solid #B91C1C;border-radius:12px;background:#FEF2F2;color:#7F1D1D;font:15px system-ui,sans-serif';
+ var t=e.target;if(t&&t.src&&t.src.indexOf('/vendor/')>-1)return;
+ var m=(t&&t.src)?'Could not load '+t.src.split('/').slice(-2).join('/'):(e.message||'Unknown error');
+ var d=document.createElement('div');d.style.cssText='padding:16px;margin:16px;border:2px solid #B91C1C;border-radius:12px;background:#FEF2F2;color:#7F1D1D;font:15px system-ui,sans-serif;position:relative;z-index:99';
  d.textContent='Something went wrong: '+m+'. Check your internet connection and that every file from the zip was uploaded to the same folder.';
  (document.body||document.documentElement).prepend(d);
 },true);
 </script><title>NL – Normal Level</title></head>
-<body><div id="root"><div class="wrap"><p class="sm">Loading your budget…</p></div></div><dialog id="dlg"></dialog><div id="toast"></div>
+<body>
+<div class="app" id="app"><div class="main"><p class="sm">Loading your budget…</p></div></div>
+<dialog id="dlg"></dialog><div id="toast"></div>
 <script src="vendor/supabase.js"></script><script>window.supabase||document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"><\/script>')</script><script src="common.js"></script>
 <script>
-let user=null,cats=[],budgets=[],expenses=[],incomes=[];
+let user=null,cats=[],budgets=[],expenses=[],incomes=[],debts=[],goals=[];
 let month=new Date();month.setDate(1);month.setHours(0,0,0,0);
 async function load(){
  const from=ymd(month),to=ymd(new Date(month.getFullYear(),month.getMonth()+1,1));
- const [c,b,e,i]=await Promise.all([
+ const r=await Promise.all([
   sb.from('categories').select('*').order('sort_order'),
   sb.from('budgets').select('*').eq('month',from),
   sb.from('expenses').select('*').gte('spent_on',from).lt('spent_on',to).order('spent_on',{ascending:false}).order('created_at',{ascending:false}),
-  sb.from('incomes').select('*').gte('received_on',from).lt('received_on',to)]);
- const bad=[c,b,e,i].find(x=>x.error);if(bad)toast(bad.error.message);
- cats=c.data||[];budgets=b.data||[];expenses=e.data||[];incomes=i.data||[];
+  sb.from('incomes').select('*').gte('received_on',from).lt('received_on',to),
+  sb.from('debts').select('*').order('created_at'),
+  sb.from('savings_goals').select('*').order('created_at')]);
+ const bad=r.find(x=>x.error);if(bad)toast(bad.error.message);
+ [cats,budgets,expenses,incomes,debts,goals]=r.map(x=>x.data||[]);
 }
+const pctOf=(a,b)=>b>0?Math.min(100,Math.round(a/b*100)):0;
 function render(){
  const income=sum(incomes);
- const kind=id=>cats.find(c=>c.id===id)?.kind;
- const spent=sum(expenses.filter(x=>kind(x.category_id)!=='savings'));
- const saved=sum(expenses.filter(x=>kind(x.category_id)==='savings'));
- const left=income-spent-saved;
  const now=new Date(),dim=new Date(month.getFullYear(),month.getMonth()+1,0).getDate();
  const cur=now.getFullYear()===month.getFullYear()&&now.getMonth()===month.getMonth();
  const days=cur?dim-now.getDate()+1:0;
- const per=days?Math.max(left,0)/days:null;
+ const budOf=id=>Number(budgets.find(b=>b.category_id===id)?.amount||0);
+ const spentOf=id=>sum(expenses.filter(x=>x.category_id===id));
+ const live=cats.filter(c=>c.kind==='expense'&&c.name!=='House rent');
+ const liveBud=live.reduce((s,c)=>s+budOf(c.id),0),liveSpent=live.reduce((s,c)=>s+spentOf(c.id),0),left=liveBud-liveSpent;
+ const planned=cats.reduce((s,c)=>s+budOf(c.id),0),unplanned=income-planned;
  const label=month.toLocaleString('en',{month:'long',year:'numeric'});
+ const sub=label+(cur?' · day '+now.getDate()+' of '+dim:'');
+ const heroLine=!liveBud?'Set budgets for your everyday categories to see what you can live on.':left<0?'You are '+money(-left)+' over your everyday budget':(days&&left>0?'about '+money(Math.round(left/days))+' a day for '+days+' more day'+(days===1?'':'s'):'left for everyday spending');
  const cards=cats.map(c=>{
-  const s=sum(expenses.filter(x=>x.category_id===c.id)),b=budgets.find(x=>x.category_id===c.id),bud=b?Number(b.amount):0;
-  const pct=bud?Math.min(100,Math.round(s/bud*100)):0,over=bud&&s>bud;
-  let col='#16A34A',st='',cl='ok';
-  if(!bud){st='No budget set';cl='sm';col='#A1A1AA'}
-  else if(c.kind==='savings'){st=Math.round(s/bud*100)+'% of goal'}
-  else if(over){col='#DC2626';st='Over by '+money(s-bud);cl='bad'}
-  else if(s/bud>=.85){col='#D97706';st='Almost at limit';cl='warn'}
-  else st=s?'On track':'Not started';
-  return `<div class="card"><div class="ch"><span class="ico">${esc(c.name[0])}</span><b style="flex:1">${esc(c.name)}</b><span class="sm ${cl}" style="font-weight:600">${st}</span></div>
-  <div class="row" style="justify-content:flex-start;align-items:baseline;gap:6px"><span style="font-size:26px;font-weight:700">${money(s)}</span><span class="sm">${bud?'of '+money(bud):''}</span></div>
-  <div class="bar"><i style="width:${pct}%;background:${col}"></i></div>
-  <div class="row"><span class="sm">${bud?(over?'':money(bud-s)+' left'):''}</span><button class="link" onclick="editBudget('${c.id}')">${bud?'Edit':'Set'} budget</button></div></div>`}).join('');
- const act=expenses.slice(0,15).map(x=>`<div class="it"><div><b>${esc(x.description||'Expense')}</b><div class="sm">${esc(cats.find(c=>c.id===x.category_id)?.name||'')} · ${esc(x.spent_on)}${x.source==='receipt'?' · receipt':''}</div></div><b>${money(x.amount)}</b></div>`).join('');
- $('#root').innerHTML=`<div class="wrap">
- <div class="top"><div><div style="display:flex;align-items:center;gap:12px;margin-bottom:8px"><img src="icon-192.png" alt="NL" width="48" height="48" style="border-radius:12px;display:block"><h1>Normal Level</h1></div><div class="mon"><button aria-label="Previous month" onclick="shift(-1)">‹</button>${label}<button aria-label="Next month" onclick="shift(1)">›</button></div></div>
- <div class="acts"><button class="primary" onclick="addExpense()">+ Expense</button><a class="ghost" href="scan.html">Scan receipt</a><button class="ghost" onclick="addIncome()">+ Income</button><button class="link" onclick="signOut()">Sign out</button></div></div>
- <div class="kpis"><div class="card hero"><div class="k">${per===null?'Left this month':'You can spend per day'}</div><div class="v">${money(per===null?left:per)}</div><div class="k">${per===null?'':money(Math.max(left,0))+' left to live on · '+days+' day'+(days===1?'':'s')+' to go'}</div></div>
- <div class="card"><div class="k">Income</div><div class="v">${money(income)}</div></div><div class="card"><div class="k">Spent</div><div class="v">${money(spent)}</div></div><div class="card"><div class="k">Saved</div><div class="v ok">${money(saved)}</div></div></div>
- ${income?'':'<p class="sm">Add your income for this month to see how much you can spend each day.</p>'}
- <h2>Where your money goes</h2><div class="grid">${cards}</div>
- <h2>Recent activity</h2><div class="card list">${act||'<span class="sm">Nothing yet. Add an expense or scan a receipt.</span>'}</div></div>`;
+  const s=spentOf(c.id),bud=budOf(c.id),st=catStatus(c,s,bud,days);
+  return `<article class="cat"><div class="t"><span class="ic">${icon(c.name)}</span><h3>${esc(c.name)}</h3><span class="pill ${st.cls}">${st.pill}</span></div>
+  <div class="amt"><b>${money(s)}</b><span>${bud?'of '+money(bud):''}</span></div>
+  <div class="track"><i style="width:${st.pct}%;background:${st.bar}"></i></div>
+  <div class="foot"><span>${esc(st.foot)}</span><button class="link" onclick="editBudget('${c.id}')">${bud?'Edit':'Set'} budget</button></div></article>`}).join('');
+ const debtLi=debts.map(d=>{const left=Math.max(0,d.total_amount-d.paid_amount),p=pctOf(d.paid_amount,d.total_amount);
+  return `<li><div class="row" style="font-size:14px"><b>${esc(d.name)}</b><span style="color:#4B5563">${money(left)} left of ${money(d.total_amount)}</span></div><div class="track"><i style="width:${p}%;background:#22C55E"></i></div>
+  <div class="row"><span class="sm">${p}% paid off${d.monthly_payment?' · '+money(d.monthly_payment)+' a month':''}</span><span><button class="link" onclick="editDebt('${d.id}')">Edit</button> <button class="link" style="color:#B91C1C" onclick="removeRow('debts','${d.id}')">Remove</button></span></div></li>`}).join('');
+ const goalLi=goals.map(g=>{const p=pctOf(g.saved_amount,g.target_amount);
+  return `<li><div class="row" style="font-size:14px"><b>${esc(g.name)}</b><span style="color:#4B5563">${money(g.saved_amount)} of ${money(g.target_amount)}</span></div><div class="track"><i style="width:${p}%;background:#22C55E"></i></div>
+  <div class="row"><span class="sm">${p}% saved</span><span><button class="link" onclick="editGoal('${g.id}')">Edit</button> <button class="link" style="color:#B91C1C" onclick="removeRow('savings_goals','${g.id}')">Remove</button></span></div></li>`}).join('');
+ const act=expenses.slice(0,20).map(x=>`<div class="it"><div><b>${esc(x.description||'Expense')}</b><div class="sm">${esc(cats.find(c=>c.id===x.category_id)?.name||'')} · ${esc(x.spent_on)}${x.source==='receipt'?' · receipt':''}</div></div><b>${money(x.amount)}</b></div>`).join('');
+ const nav=[['top','Overview','home'],['spending','Spending','cart'],['budgets','Budgets','bag'],['debts','Debts','card'],['savings','Savings','coin']];
+ $('#app').innerHTML=`<aside class="side"><div class="brand"><img src="icon-192.png" alt="NL" width="40" height="40">Normal Level</div>
+ <nav class="nav" aria-label="Main">${nav.map((n,i)=>`<a href="#${n[0]}" class="${i===0?'on':''}" data-n="${i}">${icon(n[2])}${n[1]}</a>`).join('')}</nav>
+ <nav class="nav foot"><a href="scan.html">${icon('scan')}Scan receipt</a><button onclick="signOut()">${icon('out')}Sign out</button></nav></aside>
+ <main class="main" id="top"><header class="head"><div><h1>Monthly plan</h1><p style="margin-top:4px;font-size:15px;color:#4B5563">${esc(sub)}</p></div>
+  <div class="acts"><div class="mnav"><button aria-label="Previous month" onclick="shift(-1)">‹</button><button onclick="goNow()">This month</button><button aria-label="Next month" onclick="shift(1)">›</button></div><button class="btn" onclick="addExpense()">+ Add expense</button><button class="btn ghost" onclick="addIncome()">+ Income</button></div></header>
+ <section class="sum" aria-label="Summary"><div class="hero"><span class="k">Left to live on this month</span>
+  <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><span class="big">${liveBud?money(left):'–'}</span><span style="font-size:16px;color:#D4D4D8">${esc(heroLine)}</span></div>
+  <div class="bar"><i style="width:${pctOf(liveSpent,liveBud)}%;${left<0?'background:#EF4444':''}"></i></div>
+  <div class="row" style="font-size:13px;color:#A1A1AA"><span>Spent ${money(liveSpent)} on everyday spending</span><span>Budget ${money(liveBud)}</span></div></div>
+  <div class="card kpi"><span style="font-size:14px;font-weight:500;color:#4B5563">Income this month</span><span class="v">${money(income)}</span><span class="sm">${!income?'Add your income to start planning':unplanned===0?'Every bit of income has a plan':unplanned>0?money(unplanned)+' not planned yet':'Plans are '+money(-unplanned)+' over your income'}</span></div></section>
+ <section class="sec" id="budgets"><h2>Where your money goes</h2><div class="cats">${cards}</div></section>
+ <section class="two"><div class="card sec" id="debts"><div class="row" style="margin-bottom:16px"><h2 style="margin:0">Debts</h2><button class="link" onclick="editDebt()">+ Add debt</button></div><ul class="pl">${debtLi||'<li class="sm">No debts added yet.</li>'}</ul></div>
+  <div class="card sec" id="savings"><div class="row" style="margin-bottom:16px"><h2 style="margin:0">Savings goals</h2><button class="link" onclick="editGoal()">+ Add goal</button></div><ul class="pl">${goalLi||'<li class="sm">No savings goals yet.</li>'}</ul></div></section>
+ <section class="card sec act" id="spending"><h2>Recent spending</h2>${act||'<span class="sm">Nothing yet. Add an expense or scan a receipt.</span>'}</section></main>
+ <nav class="tabbar" aria-label="Main"><a href="#top" class="on">${icon('home',22,'currentColor')}Overview</a><a href="scan.html">${icon('scan',22,'currentColor')}Scan</a><a href="#spending">${icon('list',22,'currentColor')}Spending</a><button onclick="signOut()">${icon('out',22,'currentColor')}Sign out</button></nav>`;
+ document.querySelectorAll('.nav a[data-n]').forEach(a=>a.onclick=()=>{document.querySelectorAll('.nav a[data-n]').forEach(x=>x.classList.remove('on'));a.classList.add('on')});
 }
 async function refresh(){await load();render()}
 function shift(n){month=new Date(month.getFullYear(),month.getMonth()+n,1);refresh()}
+function goNow(){month=new Date();month.setDate(1);month.setHours(0,0,0,0);refresh()}
 function addExpense(){
- modal('Add expense',`<label>Amount (E)</label><input name="amount" type="number" step="0.01" min="0.01" required inputmode="decimal">
- <label>Category</label><select name="cat">${catOpts(cats)}</select><label>What was it?</label><input name="desc" placeholder="Optional">
- <label>Date</label><input name="date" type="date" value="${ymd(new Date())}" required>`,
+ modal('Add expense',`<div class="f"><label>Amount (E)</label><input name="amount" type="number" step="0.01" min="0.01" required inputmode="decimal"></div>
+ <div class="f"><label>Category</label><select name="cat">${catOpts(cats)}</select></div><div class="f"><label>What was it?</label><input name="desc" placeholder="Optional"></div>
+ <div class="f"><label>Date</label><input name="date" type="date" value="${ymd(new Date())}" required></div>`,
  async f=>{const r=await sb.from('expenses').insert({category_id:f.get('cat'),amount:+f.get('amount'),description:f.get('desc')||null,spent_on:f.get('date')});if(r.error)throw r.error;await refresh()});
 }
 function addIncome(){
- modal('Add income',`<label>Amount (E)</label><input name="amount" type="number" step="0.01" min="0.01" required inputmode="decimal">
- <label>Source</label><input name="src" value="Salary" required><label>Date</label><input name="date" type="date" value="${ymd(new Date())}" required>`,
+ modal('Add income',`<div class="f"><label>Amount (E)</label><input name="amount" type="number" step="0.01" min="0.01" required inputmode="decimal"></div>
+ <div class="f"><label>Source</label><input name="src" value="Salary" required></div><div class="f"><label>Date</label><input name="date" type="date" value="${ymd(new Date())}" required></div>`,
  async f=>{const r=await sb.from('incomes').insert({source:f.get('src'),amount:+f.get('amount'),received_on:f.get('date')});if(r.error)throw r.error;await refresh()});
 }
 function editBudget(id){
  const c=cats.find(x=>x.id===id),b=budgets.find(x=>x.category_id===id);
- modal(c.name+' budget',`<label>Amount for ${esc(month.toLocaleString('en',{month:'long'}))} (E)</label><input name="amount" type="number" step="0.01" min="0" required value="${b?b.amount:''}" inputmode="decimal">`,
+ modal(c.name+' budget',`<div class="f"><label>Amount for ${esc(month.toLocaleString('en',{month:'long'}))} (E)</label><input name="amount" type="number" step="0.01" min="0" required value="${b?b.amount:''}" inputmode="decimal"></div>`,
  async f=>{const r=await sb.from('budgets').upsert({category_id:id,month:ymd(month),amount:+f.get('amount')},{onConflict:'category_id,month'});if(r.error)throw r.error;await refresh()});
 }
-(async()=>{user=await requireUser();if(user)await refresh()})();
+function editDebt(id){
+ const d=debts.find(x=>x.id===id)||{};
+ modal(id?'Edit debt':'Add debt',`<div class="f"><label>Name</label><input name="name" required value="${esc(d.name||'')}" placeholder="e.g. Phone loan"></div>
+ <div class="f"><label>Total owed at the start (E)</label><input name="total" type="number" step="0.01" min="0.01" required value="${d.total_amount??''}" inputmode="decimal"></div>
+ <div class="f"><label>Paid off so far (E)</label><input name="paid" type="number" step="0.01" min="0" value="${d.paid_amount??0}" inputmode="decimal"></div>
+ <div class="f"><label>Monthly payment (E, optional)</label><input name="mp" type="number" step="0.01" min="0" value="${d.monthly_payment??''}" inputmode="decimal"></div>`,
+ async f=>{const row={name:f.get('name'),total_amount:+f.get('total'),paid_amount:+f.get('paid')||0,monthly_payment:f.get('mp')===''?null:+f.get('mp')};
+  const r=id?await sb.from('debts').update(row).eq('id',id):await sb.from('debts').insert(row);if(r.error)throw r.error;await refresh()});
+}
+function editGoal(id){
+ const g=goals.find(x=>x.id===id)||{};
+ modal(id?'Edit goal':'Add savings goal',`<div class="f"><label>Name</label><input name="name" required value="${esc(g.name||'')}" placeholder="e.g. Emergency fund"></div>
+ <div class="f"><label>Target (E)</label><input name="target" type="number" step="0.01" min="0.01" required value="${g.target_amount??''}" inputmode="decimal"></div>
+ <div class="f"><label>Saved so far (E)</label><input name="saved" type="number" step="0.01" min="0" value="${g.saved_amount??0}" inputmode="decimal"></div>`,
+ async f=>{const row={name:f.get('name'),target_amount:+f.get('target'),saved_amount:+f.get('saved')||0};
+  const r=id?await sb.from('savings_goals').update(row).eq('id',id):await sb.from('savings_goals').insert(row);if(r.error)throw r.error;await refresh()});
+}
+async function removeRow(table,id){if(!confirm('Remove this?'))return;const r=await sb.from(table).delete().eq('id',id);if(r.error)return toast(r.error.message);await refresh()}
+(async()=>{user=await requireUser();if(!user)return;await refresh();if(location.hash==='#add'){history.replaceState(null,'',location.pathname);addExpense()}})();
 </script></body></html>

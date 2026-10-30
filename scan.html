@@ -1,21 +1,22 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0A0A0A"><link rel="stylesheet" href="style.css"><script>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0A0A0A"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"><link rel="stylesheet" href="style.css"><script>
 window.addEventListener('error',function(e){
- var t=e.target;if(t&&t.src&&t.src.indexOf('/vendor/')>-1)return;var m=(t&&t.src)?'Could not load '+t.src.split('/').slice(-2).join('/'):(e.message||'Unknown error');
- var d=document.createElement('div');d.style.cssText='padding:16px;margin:16px;border:2px solid #B91C1C;border-radius:12px;background:#FEF2F2;color:#7F1D1D;font:15px system-ui,sans-serif';
+ var t=e.target;if(t&&t.src&&t.src.indexOf('/vendor/')>-1)return;
+ var m=(t&&t.src)?'Could not load '+t.src.split('/').slice(-2).join('/'):(e.message||'Unknown error');
+ var d=document.createElement('div');d.style.cssText='padding:16px;margin:16px;border:2px solid #B91C1C;border-radius:12px;background:#FEF2F2;color:#7F1D1D;font:15px system-ui,sans-serif;position:relative;z-index:99';
  d.textContent='Something went wrong: '+m+'. Check your internet connection and that every file from the zip was uploaded to the same folder.';
  (document.body||document.documentElement).prepend(d);
 },true);
 </script><title>NL – Scan receipt</title></head>
-<body><div class="wrap"><div class="top"><a class="link" href="index.html" style="text-decoration:none">‹ Dashboard</a><img src="icon-192.png" alt="NL" width="40" height="40" style="border-radius:10px"></div>
-<div class="view" id="view"><p class="sm">Loading…</p></div></div>
-<div id="toast"></div>
-<input id="cam" type="file" accept="image/*" capture="environment" hidden>
+<body class="dark">
+<div id="app"></div>
 <input id="gal" type="file" accept="image/*" hidden>
+<div id="toast"></div>
 <script src="vendor/supabase.js"></script><script>window.supabase||document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"><\/script>')</script><script src="common.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script>
-let user=null,cats=[];
+let user=null,cats=[],stream=null,track=null,torchOn=false;
+const app=$('#app');
 const KW=[[/bread|milk|chicken|beef|meat|rice|maize|mealie|egg|sugar|oil|flour|fruit|veg|cheese|juice|water|tomato|onion|potato|salt|tea|coffee|bean|fish|yog|cabbage|spinach/i,'Groceries'],
  [/fuel|petrol|diesel|taxi|bus|kombi|ticket|toll/i,'Transport'],
  [/soap|detergent|airtime|data|electric|tissue|toilet|wash|bleach|paraffin|candle/i,'Living (everyday)']];
@@ -45,38 +46,64 @@ async function shrink(file){
  c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
  return new Promise(r=>c.toBlob(r,'image/jpeg',.85));
 }
-function showPick(msg){
- $('#view').innerHTML=`<div class="card center"><h2>Scan a receipt</h2><p class="sm">Take a photo of your shopping receipt. We read the items and pick a category for each one.</p>
- <p class="err">${esc(msg||'')}</p>
- <button class="primary" style="width:100%;height:54px" onclick="$('#cam').click()">Take photo</button>
- <button class="ghost" style="width:100%;margin-top:10px" onclick="$('#gal').click()">Choose from gallery</button>
- <p class="sm" style="margin-top:14px">Reading happens on your device. The photo is saved privately to your account.</p></div>`;
+/* ---------- Screen 1: camera ---------- */
+function showCamera(msg){
+ document.body.className='dark';
+ app.innerHTML=`<div class="cam"><video id="vid" playsinline muted autoplay></video>
+ <div class="br tl"></div><div class="br tr"></div><div class="br bl"></div><div class="br brr"></div>
+ <header class="camtop"><a class="rb" href="index.html" aria-label="Close">×</a><span>Scan receipt</span><button class="rb" id="flash" style="display:none;font-size:13px;font-weight:600">Flash</button></header>
+ <div class="chipwrap"><span class="chip" id="hint">${esc(msg||'Fit the receipt in the frame, then tap the shutter')}</span></div>
+ <div class="camfoot"><label class="sq" for="gal">Gallery</label><button id="shut" class="shutter" aria-label="Capture"><i></i></button><a class="sq" href="index.html#add">Type it</a></div></div>`;
+ $('#shut').onclick=capture;startCam();
 }
-for(const id of ['#cam','#gal'])$(id).onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)scan(f)};
-async function scan(file){
- $('#view').innerHTML='<div class="card center"><h2>Reading receipt…</h2><p class="sm"><b id="prog">0%</b></p></div>';
+async function startCam(){
  try{
-  const blob=await shrink(file);
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920}},audio:false});
+  $('#vid').srcObject=stream;track=stream.getVideoTracks()[0];
+  const caps=track.getCapabilities?track.getCapabilities():{};
+  if(caps.torch){const f=$('#flash');f.style.display='flex';f.onclick=async()=>{torchOn=!torchOn;try{await track.applyConstraints({advanced:[{torch:torchOn}]})}catch(e){}}}
+ }catch(e){const h=$('#hint');if(h)h.textContent='Camera not available. Use Gallery to pick a photo.';const s=$('#shut');if(s)s.disabled=true}
+}
+function stopCam(){if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;track=null;torchOn=false}
+function capture(){
+ const v=$('#vid');if(!v||!v.videoWidth)return;
+ const k=Math.min(1,1600/Math.max(v.videoWidth,v.videoHeight)),c=document.createElement('canvas');
+ c.width=Math.round(v.videoWidth*k);c.height=Math.round(v.videoHeight*k);c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+ c.toBlob(b=>process(b),'image/jpeg',.85);
+}
+$('#gal').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;stopCam();try{process(await shrink(f))}catch(x){showCamera("Couldn't open that photo")}};
+async function process(blob){
+ stopCam();
+ app.innerHTML='<div class="cam"><div class="reading"><h2>Reading receipt…</h2><b id="prog">0%</b><p class="sm" style="color:#A1A1AA">This runs on your device</p></div></div>';
+ try{
   const r=await Tesseract.recognize(blob,'eng',{logger:m=>{if(m.status==='recognizing text'&&$('#prog'))$('#prog').textContent=Math.round(m.progress*100)+'%'}});
   review(blob,r.data.text,parse(r.data.text));
- }catch(x){showPick("Couldn't read that photo: "+(x.message||x))}
+ }catch(x){showCamera("Couldn't read that photo: "+(x.message||x))}
 }
+/* ---------- Screen 2: review ---------- */
 function review(blob,text,p){
+ document.body.className='';document.body.style.background='#F4F4F5';
  const rows=p.items.length?p.items:[{name:'',amount:'',...guess('')}];
  const total=()=>rows.reduce((s,r)=>s+(+r.amount||0),0);
+ const chips=()=>{const m={};rows.forEach(r=>{if(+r.amount>0){m[r.cat]=(m[r.cat]||0)+ +r.amount}});return Object.entries(m).map(([id,v])=>`<span>${esc(cats.find(c=>c.id===id)?.name||'')} ${money(v)}</span>`).join('')};
  const draw=()=>{
-  $('#view').innerHTML=`<div class="card"><p class="sm">${esc(p.store||'Receipt')} · ${esc(p.date)}</p>
-  <div id="rt" style="font-size:32px;font-weight:700;color:#15803D">${money(total())}</div>
-  <p class="sm">${p.total?'Receipt total read: '+money(p.total)+'. ':''}Categories are picked for you. Change any that look wrong.</p>
-  <div id="rows">${rows.map((r,i)=>`<div class="ritem ${r.check?'chk':''}"><input data-i="${i}" data-f="name" value="${esc(r.name)}" placeholder="Item"><input data-i="${i}" data-f="amount" type="number" step="0.01" min="0" value="${r.amount}" inputmode="decimal" placeholder="0.00">
-  <select data-i="${i}" data-f="cat">${catOpts(cats,r.cat)}</select><button type="button" class="link" data-del="${i}">Remove</button></div>`).join('')}</div>
-  <button type="button" class="link" id="addrow">+ Add item</button><p class="err" id="merr"></p>
-  <div class="row"><button class="ghost" id="retake">Retake</button><button class="primary" id="save" style="flex:1">Save ${rows.length} item${rows.length===1?'':'s'}</button></div></div>`;
-  $('#rows').oninput=e=>{const i=e.target.dataset.i;if(i==null)return;const f=e.target.dataset.f;rows[i][f]=e.target.value;if(f==='cat')rows[i].check=false;$('#rt').textContent=money(total())};
-  $('#rows').onclick=e=>{const i=e.target.dataset.del;if(i!=null){rows.splice(+i,1);if(!rows.length)rows.push({name:'',amount:'',...guess('')});draw()}};
+  app.innerHTML=`<div class="page"><div class="ph"><a class="back" href="#" id="back" aria-label="Back">‹</a><b style="font-size:17px">Review receipt</b><button class="link" id="retake">Retake</button></div>
+  <div class="rhero"><div><div style="font-size:13px;color:#A1A1AA">${esc(p.store||'Receipt')} · ${esc(p.date)}</div><div class="t" id="rt">${money(total())}</div></div><span class="pill" style="background:#14532D;color:#86EFAC">${p.items.length} item${p.items.length===1?'':'s'} read</span></div>
+  <p class="sm">${p.total?'Receipt total read: '+money(p.total)+'. ':''}Categories are picked for you. Tap one to change it.</p>
+  <div id="rows" style="display:flex;flex-direction:column;gap:8px">${rows.map((r,i)=>`<div class="ritem ${r.check?'chk':''}">
+   <input class="n" data-i="${i}" data-f="name" value="${esc(r.name)}" placeholder="Item" aria-label="Item name">
+   <select data-i="${i}" data-f="cat" aria-label="Category">${catOpts(cats,r.cat)}</select>
+   <input class="a" data-i="${i}" data-f="amount" type="number" step="0.01" min="0" value="${r.amount}" inputmode="decimal" placeholder="0.00" aria-label="Amount">
+   <button type="button" class="link" data-del="${i}" aria-label="Remove item" style="padding:6px">×</button></div>`).join('')}</div>
+  <button type="button" class="link" id="addrow" style="align-self:flex-start">+ Add item</button>
+  <div class="chips" id="chips">${chips()}</div></div>
+  <div class="bar-fixed"><div><p class="err" id="merr" style="margin-bottom:6px"></p><button class="btn lg" id="save">Save ${rows.length} item${rows.length===1?'':'s'}</button></div></div>`;
+  $('#rows').oninput=e=>{const i=e.target.dataset.i;if(i==null)return;const f=e.target.dataset.f;rows[i][f]=e.target.value;if(f==='cat'){rows[i].check=false;e.target.closest('.ritem').classList.remove('chk')}$('#rt').textContent=money(total());$('#chips').innerHTML=chips()};
+  $('#rows').onclick=e=>{const b=e.target.closest('[data-del]');if(!b)return;rows.splice(+b.dataset.del,1);if(!rows.length)rows.push({name:'',amount:'',...guess('')});draw()};
   $('#addrow').onclick=()=>{rows.push({name:'',amount:'',...guess('')});draw()};
-  $('#retake').onclick=()=>showPick();
-  $('#save').onclick=async e=>{e.target.disabled=true;try{const res=await save(blob,text,p,rows);saved(res)}catch(x){$('#merr').textContent=x.message||String(x);e.target.disabled=false}};
+  const again=e=>{e.preventDefault();document.body.style.background='';showCamera()};
+  $('#back').onclick=again;$('#retake').onclick=again;
+  $('#save').onclick=async e=>{e.target.disabled=true;try{saved(await save(blob,text,p,rows))}catch(x){$('#merr').textContent=x.message||String(x);e.target.disabled=false}};
  };
  draw();
 }
@@ -90,21 +117,21 @@ async function save(blob,text,p,rows){
  const b=await sb.from('expenses').insert(ok.map(r=>({category_id:r.cat,receipt_id:rc.data.id,description:r.name||'Item',amount:+r.amount,spent_on:p.date,source:'receipt'})));if(b.error)throw b.error;
  return{ok,total:t,date:p.date};
 }
+/* ---------- Screen 3: saved ---------- */
 async function saved(res){
  const d=new Date(res.date+'T00:00:00'),from=ymd(new Date(d.getFullYear(),d.getMonth(),1)),to=ymd(new Date(d.getFullYear(),d.getMonth()+1,1));
  const [b,e]=await Promise.all([sb.from('budgets').select('*').eq('month',from),sb.from('expenses').select('category_id,amount').gte('spent_on',from).lt('spent_on',to)]);
  const ids=[...new Set(res.ok.map(r=>r.cat))];
  const cards=ids.map(id=>{
   const c=cats.find(x=>x.id===id),added=sum(res.ok.filter(r=>r.cat===id)),s=sum((e.data||[]).filter(x=>x.category_id===id)),bud=+(b.data||[]).find(x=>x.category_id===id)?.amount||0;
-  const over=bud&&s>bud,near=bud&&!over&&s/bud>=.85,col=over?'#DC2626':near?'#D97706':'#16A34A',cl=over?'bad':near?'warn':'ok';
-  const st=!bud?'No budget set':over?'Over by '+money(s-bud):near?'Almost at limit':'On track';
-  return `<div class="card" style="margin-bottom:10px"><div class="row"><b>${esc(c.name)}</b><b class="${bud?cl:'sm'}">${st}</b></div>
-  <div class="bar"><i style="width:${bud?Math.min(100,Math.round(s/bud*100)):0}%;background:${bud?col:'#A1A1AA'}"></i></div>
+  const st=catStatus(c,s,bud,0),txt=!bud?'No budget set':st.cls==='bad'?'Over by '+money(s-bud):st.cls==='warn'?'Almost at limit':'On track';
+  return `<div class="sv"><div class="row"><b>${esc(c.name)}</b><span class="pill ${st.cls}">${txt}</span></div><div class="track"><i style="width:${st.pct}%;background:${st.bar}"></i></div>
   <div class="row sm"><span>+${money(added)} added</span><span>${money(s)}${bud?' of '+money(bud):''}</span></div></div>`}).join('');
- $('#view').innerHTML=`<div class="center" style="margin:12px 0 20px"><h1>Receipt saved</h1><p class="sm">${money(res.total)} was added to ${ids.length} categor${ids.length===1?'y':'ies'}</p></div>${cards}
- <button class="primary" style="width:100%;height:54px;margin-top:6px" id="again">Scan another receipt</button>
- <a class="ghost" href="index.html" style="display:flex;align-items:center;justify-content:center;margin-top:10px;text-decoration:none;width:100%">Done</a>`;
- $('#again').onclick=()=>showPick();
+ app.innerHTML=`<div class="page" style="padding-top:calc(env(safe-area-inset-top,0px) + 56px)"><div style="display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;margin-bottom:8px">
+ <svg width="72" height="72" viewBox="0 0 36 36" aria-hidden="true"><rect width="36" height="36" rx="10" fill="#0A0A0A"/><path d="M11 18.5l5 5 9-11" fill="none" stroke="#22C55E" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+ <h1 style="font-size:26px">Receipt saved</h1><p style="font-size:15px;color:#4B5563">${money(res.total)} was added to ${ids.length} categor${ids.length===1?'y':'ies'}</p></div>${cards}
+ <button class="btn lg" id="again" style="margin-top:8px">Scan another receipt</button><a class="btn ghost lg" href="index.html">Done</a></div>`;
+ $('#again').onclick=()=>{document.body.style.background='';showCamera()};
 }
-(async()=>{user=await requireUser();if(!user)return;try{cats=await loadCats()}catch(x){toast(x.message)}showPick()})();
+(async()=>{user=await requireUser();if(!user)return;try{cats=await loadCats()}catch(x){toast(x.message)}showCamera()})();
 </script></body></html>

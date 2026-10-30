@@ -1,24 +1,34 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0A0A0A"><link rel="stylesheet" href="style.css"><script>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0A0A0A"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"><link rel="stylesheet" href="style.css"><script>
 window.addEventListener('error',function(e){
- var t=e.target;if(t&&t.src&&t.src.indexOf('/vendor/')>-1)return;var m=(t&&t.src)?'Could not load '+t.src.split('/').slice(-2).join('/'):(e.message||'Unknown error');
- var d=document.createElement('div');d.style.cssText='padding:16px;margin:16px;border:2px solid #B91C1C;border-radius:12px;background:#FEF2F2;color:#7F1D1D;font:15px system-ui,sans-serif';
+ var t=e.target;if(t&&t.src&&t.src.indexOf('/vendor/')>-1)return;
+ var m=(t&&t.src)?'Could not load '+t.src.split('/').slice(-2).join('/'):(e.message||'Unknown error');
+ var d=document.createElement('div');d.style.cssText='padding:16px;margin:16px;border:2px solid #B91C1C;border-radius:12px;background:#FEF2F2;color:#7F1D1D;font:15px system-ui,sans-serif;position:relative;z-index:99';
  d.textContent='Something went wrong: '+m+'. Check your internet connection and that every file from the zip was uploaded to the same folder.';
  (document.body||document.documentElement).prepend(d);
 },true);
 </script><title>NL – Sign in</title></head>
-<body><div class="wrap"><form class="auth" id="af"><p class="sm">Loading…</p></form></div>
+<body>
+<div class="split"><main><form class="auth" id="af"><p class="sm">Loading…</p></form></main>
+<aside><div style="max-width:440px;display:flex;flex-direction:column;gap:16px"><h2 style="font-size:40px;line-height:1.15;font-weight:700;margin:0;color:#4ADE80">Know your normal level.</h2><p style="margin:0;font-size:18px;line-height:1.5;color:#A1A1AA">Sign in to see what you can spend today, scan receipts and keep every category on track.</p></div></aside></div>
 <script src="vendor/supabase.js"></script><script>window.supabase||document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"><\/script>')</script><script src="common.js"></script>
 <script>
 let mode='in';
 function draw(msg,good){
- $('#af').innerHTML=`<img src="icon-192.png" alt="NL" width="64" height="64" style="border-radius:16px;display:block"><h1>Welcome back</h1><p class="sm">Sign in to continue to your budget.</p>
- <div class="tabs"><button type="button" class="${mode==='in'?'on':''}" id="t1">Sign in</button><button type="button" class="${mode==='up'?'on':''}" id="t2">Create account</button></div>
- <label for="em">Email</label><input id="em" name="email" type="email" required autocomplete="email" placeholder="you@example.com">
- <label for="pw">Password</label><input id="pw" name="password" type="password" required minlength="6" autocomplete="${mode==='in'?'current-password':'new-password'}" placeholder="At least 6 characters">
- <p class="err" style="${good?'color:#15803D':''}">${esc(msg||'')}</p>
- <button class="primary" style="height:52px">${mode==='in'?'Sign in':'Create account'}</button>`;
- $('#t1').onclick=()=>{mode='in';draw()};$('#t2').onclick=()=>{mode='up';draw()};
+ $('#af').innerHTML=`<img src="icon-192.png" alt="NL" width="48" height="48" style="display:block;border-radius:12px">
+ <div style="display:flex;flex-direction:column;gap:8px"><h1>${mode==='in'?'Welcome back':'Create your account'}</h1><p style="color:#4B5563;line-height:1.5">${mode==='in'?'Sign in to continue to your account.':'Use your email and a password to get started.'}</p></div>
+ <div class="field"><label for="email">Email</label><input id="email" name="email" type="email" required autocomplete="email" placeholder="you@example.com"></div>
+ <div class="field"><div class="row"><label for="pw">Password</label>${mode==='in'?'<a href="#" id="forgot" style="font-size:14px;font-weight:500;margin-bottom:6px">Forgot password?</a>':''}</div>
+  <div class="pwwrap"><input id="pw" name="password" type="password" required minlength="6" autocomplete="${mode==='in'?'current-password':'new-password'}" placeholder="${mode==='in'?'Enter your password':'At least 6 characters'}"><button type="button" id="show" aria-label="Show password">Show</button></div></div>
+ <p class="err" style="${good?'color:#15803D':''};margin-top:-8px">${esc(msg||'')}</p>
+ <button class="btn lg dk" style="border-radius:10px">${mode==='in'?'Sign in':'Create account'}</button>
+ ${mode==='in'?'<div class="or">or</div><button type="button" class="btn ghost lg" id="magic" style="height:48px;font-size:15px">Email me a sign-in link</button>':''}
+ <p style="font-size:15px;color:#4B5563;text-align:center">${mode==='in'?'New here? <a href="#" id="sw" style="font-weight:600">Create an account</a>':'Already have an account? <a href="#" id="sw" style="font-weight:600">Sign in</a>'}</p>`;
+ $('#sw').onclick=e=>{e.preventDefault();mode=mode==='in'?'up':'in';draw()};
+ $('#show').onclick=()=>{const p=$('#pw');const s=p.type==='password';p.type=s?'text':'password';$('#show').textContent=s?'Hide':'Show'};
+ const redirect=new URL('login.html',location.href).href;
+ if($('#forgot'))$('#forgot').onclick=async e=>{e.preventDefault();const em=$('#email').value.trim();if(!em)return draw('Type your email above first, then tap Forgot password.');const r=await sb.auth.resetPasswordForEmail(em,{redirectTo:redirect});draw(r.error?r.error.message:'If that email has an account, a reset link is on its way.',!r.error)};
+ if($('#magic'))$('#magic').onclick=async()=>{const em=$('#email').value.trim();if(!em)return draw('Type your email above first, then tap the sign-in link.');const r=await sb.auth.signInWithOtp({email:em,options:{emailRedirectTo:new URL('index.html',location.href).href}});draw(r.error?r.error.message:'Check your email for a sign-in link.',!r.error)};
 }
 $('#af').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),email=f.get('email'),password=f.get('password');
  const r=mode==='in'?await sb.auth.signInWithPassword({email,password}):await sb.auth.signUp({email,password,options:{emailRedirectTo:new URL('login.html',location.href).href}});
