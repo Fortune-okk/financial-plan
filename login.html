@@ -1,7 +1,14 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0A0A0A"><link rel="stylesheet" href="style.css"><title>NL – Sign in</title></head>
-<body><div class="wrap"><form class="auth" id="af"></form></div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script><script src="common.js"></script>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0A0A0A"><link rel="stylesheet" href="style.css"><script>
+window.addEventListener('error',function(e){
+ var t=e.target;if(t&&t.src&&t.src.indexOf('/vendor/')>-1)return;var m=(t&&t.src)?'Could not load '+t.src.split('/').slice(-2).join('/'):(e.message||'Unknown error');
+ var d=document.createElement('div');d.style.cssText='padding:16px;margin:16px;border:2px solid #B91C1C;border-radius:12px;background:#FEF2F2;color:#7F1D1D;font:15px system-ui,sans-serif';
+ d.textContent='Something went wrong: '+m+'. Check your internet connection and that every file from the zip was uploaded to the same folder.';
+ (document.body||document.documentElement).prepend(d);
+},true);
+</script><title>NL – Sign in</title></head>
+<body><div class="wrap"><form class="auth" id="af"><p class="sm">Loading…</p></form></div>
+<script src="vendor/supabase.js"></script><script>window.supabase||document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"><\/script>')</script><script src="common.js"></script>
 <script>
 let mode='in';
 function draw(msg,good){
