@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0A0A0A"><link rel="stylesheet" href="style.css"><title>NL – Scan receipt</title></head>
+<body><div class="wrap"><div class="top"><a class="link" href="index.html" style="text-decoration:none">‹ Dashboard</a><img src="icon-192.png" alt="NL" width="40" height="40" style="border-radius:10px"></div>
+<div class="view" id="view"></div></div>
+<div id="toast"></div>
+<input id="cam" type="file" accept="image/*" capture="environment" hidden>
+<input id="gal" type="file" accept="image/*" hidden>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script><script src="common.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+let user=null,cats=[];
+const KW=[[/bread|milk|chicken|beef|meat|rice|maize|mealie|egg|sugar|oil|flour|fruit|veg|cheese|juice|water|tomato|onion|potato|salt|tea|coffee|bean|fish|yog|cabbage|spinach/i,'Groceries'],
+ [/fuel|petrol|diesel|taxi|bus|kombi|ticket|toll/i,'Transport'],
+ [/soap|detergent|airtime|data|electric|tissue|toilet|wash|bleach|paraffin|candle/i,'Living (everyday)']];
+function guess(name){
+ for(const [re,cn] of KW){if(re.test(name)){const c=cats.find(x=>x.name===cn);if(c)return{cat:c.id,check:false}}}
+ const c=cats.find(x=>x.name==='Shopping')||cats[0];return{cat:c?.id,check:true};
+}
+function parse(text){
+ const lines=text.split('\n').map(l=>l.trim()).filter(Boolean),items=[];let total=null;
+ const skip=/sub-?total|vat|tax|change|cash|card|balance|tender|round|amount due|thank|tel\b|invoice|receipt|qty|discount|saving/i;
+ for(const l of lines){
+  const m=l.match(/^(.*?)[\sE]*?(\d{1,6}[.,]\d{2})\s*[A-Za-z]?$/);if(!m)continue;
+  const amt=parseFloat(m[2].replace(',','.'));if(!amt)continue;
+  if(/total/i.test(l)&&!/sub/i.test(l)){total=amt;continue}
+  const name=m[1].replace(/[^A-Za-z0-9 %&'\/.-]/g,' ').replace(/\s+/g,' ').trim();
+  if(skip.test(l)||name.length<2)continue;
+  items.push({name,amount:amt,...guess(name)});
+ }
+ const store=(lines.find(l=>/[A-Za-z]{3,}/.test(l))||'').replace(/[^A-Za-z0-9 &'.-]/g,' ').replace(/\s+/g,' ').trim().slice(0,60);
+ let date=ymd(new Date());const dm=text.match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})/);
+ if(dm){let[,d,mo,y]=dm.map(Number);if(y<100)y+=2000;const t=new Date(y,mo-1,d);if(t.getMonth()===mo-1&&t<=new Date()&&y>2000)date=ymd(t)}
+ return{items,total,store,date};
+}
+async function shrink(file){
+ const bmp=await createImageBitmap(file),k=Math.min(1,1600/Math.max(bmp.width,bmp.height));
+ const c=document.createElement('canvas');c.width=Math.round(bmp.width*k);c.height=Math.round(bmp.height*k);
+ c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
+ return new Promise(r=>c.toBlob(r,'image/jpeg',.85));
+}
+function showPick(msg){
+ $('#view').innerHTML=`<div class="card center"><h2>Scan a receipt</h2><p class="sm">Take a photo of your shopping receipt. We read the items and pick a category for each one.</p>
+ <p class="err">${esc(msg||'')}</p>
+ <button class="primary" style="width:100%;height:54px" onclick="$('#cam').click()">Take photo</button>
+ <button class="ghost" style="width:100%;margin-top:10px" onclick="$('#gal').click()">Choose from gallery</button>
+ <p class="sm" style="margin-top:14px">Reading happens on your device. The photo is saved privately to your account.</p></div>`;
+}
+for(const id of ['#cam','#gal'])$(id).onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)scan(f)};
+async function scan(file){
+ $('#view').innerHTML='<div class="card center"><h2>Reading receipt…</h2><p class="sm"><b id="prog">0%</b></p></div>';
+ try{
+  const blob=await shrink(file);
+  const r=await Tesseract.recognize(blob,'eng',{logger:m=>{if(m.status==='recognizing text'&&$('#prog'))$('#prog').textContent=Math.round(m.progress*100)+'%'}});
+  review(blob,r.data.text,parse(r.data.text));
+ }catch(x){showPick("Couldn't read that photo: "+(x.message||x))}
+}
+function review(blob,text,p){
+ const rows=p.items.length?p.items:[{name:'',amount:'',...guess('')}];
+ const total=()=>rows.reduce((s,r)=>s+(+r.amount||0),0);
+ const draw=()=>{
+  $('#view').innerHTML=`<div class="card"><p class="sm">${esc(p.store||'Receipt')} · ${esc(p.date)}</p>
+  <div id="rt" style="font-size:32px;font-weight:700;color:#15803D">${money(total())}</div>
+  <p class="sm">${p.total?'Receipt total read: '+money(p.total)+'. ':''}Categories are picked for you. Change any that look wrong.</p>
+  <div id="rows">${rows.map((r,i)=>`<div class="ritem ${r.check?'chk':''}"><input data-i="${i}" data-f="name" value="${esc(r.name)}" placeholder="Item"><input data-i="${i}" data-f="amount" type="number" step="0.01" min="0" value="${r.amount}" inputmode="decimal" placeholder="0.00">
+  <select data-i="${i}" data-f="cat">${catOpts(cats,r.cat)}</select><button type="button" class="link" data-del="${i}">Remove</button></div>`).join('')}</div>
+  <button type="button" class="link" id="addrow">+ Add item</button><p class="err" id="merr"></p>
+  <div class="row"><button class="ghost" id="retake">Retake</button><button class="primary" id="save" style="flex:1">Save ${rows.length} item${rows.length===1?'':'s'}</button></div></div>`;
+  $('#rows').oninput=e=>{const i=e.target.dataset.i;if(i==null)return;const f=e.target.dataset.f;rows[i][f]=e.target.value;if(f==='cat')rows[i].check=false;$('#rt').textContent=money(total())};
+  $('#rows').onclick=e=>{const i=e.target.dataset.del;if(i!=null){rows.splice(+i,1);if(!rows.length)rows.push({name:'',amount:'',...guess('')});draw()}};
+  $('#addrow').onclick=()=>{rows.push({name:'',amount:'',...guess('')});draw()};
+  $('#retake').onclick=()=>showPick();
+  $('#save').onclick=async e=>{e.target.disabled=true;try{const res=await save(blob,text,p,rows);saved(res)}catch(x){$('#merr').textContent=x.message||String(x);e.target.disabled=false}};
+ };
+ draw();
+}
+async function save(blob,text,p,rows){
+ const ok=rows.filter(r=>+r.amount>0&&r.cat);if(!ok.length)throw new Error('Add at least one item with an amount.');
+ const path=`${user.id}/${Date.now()}.jpg`;
+ const up=await sb.storage.from('receipts').upload(path,blob,{contentType:'image/jpeg'});if(up.error)throw up.error;
+ const t=ok.reduce((s,r)=>s+ +r.amount,0);
+ const rc=await sb.from('receipts').insert({store_name:p.store||null,purchase_date:p.date,total:t,image_path:path,status:'saved',ocr_raw:{text}}).select('id').single();if(rc.error)throw rc.error;
+ const a=await sb.from('receipt_items').insert(ok.map(r=>({receipt_id:rc.data.id,name:r.name||'Item',amount:+r.amount,category_id:r.cat,needs_check:!!r.check})));if(a.error)throw a.error;
+ const b=await sb.from('expenses').insert(ok.map(r=>({category_id:r.cat,receipt_id:rc.data.id,description:r.name||'Item',amount:+r.amount,spent_on:p.date,source:'receipt'})));if(b.error)throw b.error;
+ return{ok,total:t,date:p.date};
+}
+async function saved(res){
+ const d=new Date(res.date+'T00:00:00'),from=ymd(new Date(d.getFullYear(),d.getMonth(),1)),to=ymd(new Date(d.getFullYear(),d.getMonth()+1,1));
+ const [b,e]=await Promise.all([sb.from('budgets').select('*').eq('month',from),sb.from('expenses').select('category_id,amount').gte('spent_on',from).lt('spent_on',to)]);
+ const ids=[...new Set(res.ok.map(r=>r.cat))];
+ const cards=ids.map(id=>{
+  const c=cats.find(x=>x.id===id),added=sum(res.ok.filter(r=>r.cat===id)),s=sum((e.data||[]).filter(x=>x.category_id===id)),bud=+(b.data||[]).find(x=>x.category_id===id)?.amount||0;
+  const over=bud&&s>bud,near=bud&&!over&&s/bud>=.85,col=over?'#DC2626':near?'#D97706':'#16A34A',cl=over?'bad':near?'warn':'ok';
+  const st=!bud?'No budget set':over?'Over by '+money(s-bud):near?'Almost at limit':'On track';
+  return `<div class="card" style="margin-bottom:10px"><div class="row"><b>${esc(c.name)}</b><b class="${bud?cl:'sm'}">${st}</b></div>
+  <div class="bar"><i style="width:${bud?Math.min(100,Math.round(s/bud*100)):0}%;background:${bud?col:'#A1A1AA'}"></i></div>
+  <div class="row sm"><span>+${money(added)} added</span><span>${money(s)}${bud?' of '+money(bud):''}</span></div></div>`}).join('');
+ $('#view').innerHTML=`<div class="center" style="margin:12px 0 20px"><h1>Receipt saved</h1><p class="sm">${money(res.total)} was added to ${ids.length} categor${ids.length===1?'y':'ies'}</p></div>${cards}
+ <button class="primary" style="width:100%;height:54px;margin-top:6px" id="again">Scan another receipt</button>
+ <a class="ghost" href="index.html" style="display:flex;align-items:center;justify-content:center;margin-top:10px;text-decoration:none;width:100%">Done</a>`;
+ $('#again').onclick=()=>showPick();
+}
+(async()=>{user=await requireUser();if(!user)return;try{cats=await loadCats()}catch(x){toast(x.message)}showPick()})();
+</script></body></html>

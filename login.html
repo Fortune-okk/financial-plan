@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0A0A0A"><link rel="stylesheet" href="style.css"><title>NL – Sign in</title></head>
+<body><div class="wrap"><form class="auth" id="af"></form></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script><script src="common.js"></script>
+<script>
+let mode='in';
+function draw(msg,good){
+ $('#af').innerHTML=`<img src="icon-192.png" alt="NL" width="64" height="64" style="border-radius:16px;display:block"><h1>Welcome back</h1><p class="sm">Sign in to continue to your budget.</p>
+ <div class="tabs"><button type="button" class="${mode==='in'?'on':''}" id="t1">Sign in</button><button type="button" class="${mode==='up'?'on':''}" id="t2">Create account</button></div>
+ <label for="em">Email</label><input id="em" name="email" type="email" required autocomplete="email" placeholder="you@example.com">
+ <label for="pw">Password</label><input id="pw" name="password" type="password" required minlength="6" autocomplete="${mode==='in'?'current-password':'new-password'}" placeholder="At least 6 characters">
+ <p class="err" style="${good?'color:#15803D':''}">${esc(msg||'')}</p>
+ <button class="primary" style="height:52px">${mode==='in'?'Sign in':'Create account'}</button>`;
+ $('#t1').onclick=()=>{mode='in';draw()};$('#t2').onclick=()=>{mode='up';draw()};
+}
+$('#af').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),email=f.get('email'),password=f.get('password');
+ const r=mode==='in'?await sb.auth.signInWithPassword({email,password}):await sb.auth.signUp({email,password,options:{emailRedirectTo:new URL('login.html',location.href).href}});
+ if(r.error)draw(r.error.message);else if(r.data.session)location.replace('index.html');else draw('Check your email to confirm your account, then sign in.',true)};
+sb.auth.getSession().then(({data})=>{if(data.session)location.replace('index.html')});
+draw();
+</script></body></html>
