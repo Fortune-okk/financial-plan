@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Financial Plan</title>
+<style>
+:root{--ink:#0A0A0A;--g:#22C55E;--gd:#15803D;--bg:#F4F4F5;--line:#E4E4E7;--mut:#52525B}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--ink)}
+button,input,select{font:inherit}button{cursor:pointer}
+.wrap{max-width:1000px;margin:0 auto;padding:20px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+h1{margin:0;font-size:26px}h2{margin:0 0 12px;font-size:18px}
+.mon{display:flex;align-items:center;gap:8px;color:var(--mut)}
+.mon button{width:36px;height:36px;border:1px solid #D4D4D8;border-radius:8px;background:#fff}
+.primary{height:46px;padding:0 18px;border:0;border-radius:12px;background:var(--g);color:var(--ink);font-weight:600}
+.ghost{height:46px;padding:0 18px;border:1.5px solid #A1A1AA;border-radius:12px;background:#fff;color:var(--ink);font-weight:600}
+.link{border:0;background:none;color:var(--gd);font-weight:600;padding:8px 0}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:24px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px}
+.hero{background:var(--ink);color:#fff;border:0;grid-column:span 2}
+.k{font-size:13px;color:var(--mut)}.hero .k{color:#A1A1AA}.v{font-size:28px;font-weight:700;margin-top:4px}
+.hero .v{font-size:44px;color:#4ADE80;letter-spacing:-1px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:28px}
+.ch{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.ico{width:34px;height:34px;border-radius:10px;background:var(--ink);color:#4ADE80;display:flex;align-items:center;justify-content:center;font-weight:700}
+.bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin:10px 0 8px}.bar i{display:block;height:100%}
+.row{display:flex;gap:8px;justify-content:space-between;align-items:center}
+.sm{font-size:13px;color:var(--mut)}.ok{color:var(--gd)}.warn{color:#B45309}.bad{color:#B91C1C}
+.list .it{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line)}.list .it:first-child{border-top:0}
+label{display:block;font-size:14px;font-weight:600;margin:12px 0 4px}
+input,select{width:100%;height:46px;padding:0 12px;border:1.5px solid #9CA3AF;border-radius:10px;background:#fff}
+input:focus,select:focus,button:focus-visible{outline:3px solid #86EFAC;border-color:#16A34A}
+dialog{border:0;border-radius:18px;padding:22px;width:min(520px,94vw);max-height:90vh}dialog::backdrop{background:rgba(0,0,0,.6)}
+.err{color:#B91C1C;font-size:14px;min-height:18px;margin:8px 0}
+.auth{max-width:400px;margin:8vh auto 0;display:flex;flex-direction:column;gap:6px}
+.tabs{display:flex;gap:8px;margin:12px 0}.tabs button{flex:1;height:44px;border:1.5px solid #A1A1AA;border-radius:10px;background:#fff;font-weight:600}.tabs .on{background:var(--ink);color:#4ADE80;border-color:var(--ink)}
+.ritem{display:grid;grid-template-columns:1fr 84px;gap:8px;margin-bottom:8px;padding:10px;border:1px solid var(--line);border-radius:12px}
+.ritem.chk{border-color:#D97706;background:#FFFBEB}.ritem select{grid-column:1}.ritem button{grid-column:2}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#4ADE80;padding:12px 18px;border-radius:12px;font-weight:600;display:none}
+@media(max-width:560px){.hero{grid-column:span 1}.kpis{grid-template-columns:1fr 1fr}.hero{grid-column:span 2}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<dialog id="dlg"></dialog>
+<input id="file" type="file" accept="image/*" capture="environment" hidden>
+<div id="toast"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+const SUPABASE_URL='https://fjrwtkrldmugdburhqji.supabase.co';
+const SUPABASE_KEY='sb_publishable_a4m9O1GQ4vyrtD00UEqNJw_naZRQ3UW';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>{n=Number(n)||0;const neg=n<0;n=Math.abs(n);return(neg?'-':'')+'E'+n.toLocaleString('en-US',{minimumFractionDigits:n%1?2:0,maximumFractionDigits:2})};
+const ymd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+let user=null,cats=[],budgets=[],expenses=[],incomes=[];
+let month=new Date();month.setDate(1);month.setHours(0,0,0,0);
+let authMode='in';
+
+sb.auth.onAuthStateChange((_e,s)=>{user=s?.user||null;setTimeout(route,0)});
+async function route(){if(!user){showAuth();return}await load();render()}
+function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';setTimeout(()=>e.style.display='none',3500)}
+
+/* ---------- Auth ---------- */
+function showAuth(msg,good){
+ $('#root').innerHTML=`<div class="wrap"><form class="auth" id="af"><h1>Welcome back</h1><p class="sm">Sign in to continue to your budget.</p>
+ <div class="tabs"><button type="button" class="${authMode==='in'?'on':''}" onclick="authMode='in';showAuth()">Sign in</button><button type="button" class="${authMode==='up'?'on':''}" onclick="authMode='up';showAuth()">Create account</button></div>
+ <label for="em">Email</label><input id="em" name="email" type="email" required autocomplete="email" placeholder="you@example.com">
+ <label for="pw">Password</label><input id="pw" name="password" type="password" required minlength="6" autocomplete="${authMode==='in'?'current-password':'new-password'}" placeholder="At least 6 characters">
+ <p class="err" style="${good?'color:#15803D':''}">${esc(msg||'')}</p>
+ <button class="primary" style="height:52px">${authMode==='in'?'Sign in':'Create account'}</button></form></div>`;
+ $('#af').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),email=f.get('email'),password=f.get('password');
+  const r=authMode==='in'?await sb.auth.signInWithPassword({email,password}):await sb.auth.signUp({email,password,options:{emailRedirectTo:location.href.split('#')[0]}});
+  if(r.error)showAuth(r.error.message);else if(authMode==='up'&&!r.data.session)showAuth('Check your email to confirm your account, then sign in.',true)}
+}
+async function signOut(){await sb.auth.signOut()}
+
+/* ---------- Data ---------- */
+async function load(){
+ const from=ymd(month),to=ymd(new Date(month.getFullYear(),month.getMonth()+1,1));
+ const [c,b,e,i]=await Promise.all([
+  sb.from('categories').select('*').order('sort_order'),
+  sb.from('budgets').select('*').eq('month',from),
+  sb.from('expenses').select('*').gte('spent_on',from).lt('spent_on',to).order('spent_on',{ascending:false}).order('created_at',{ascending:false}),
+  sb.from('incomes').select('*').gte('received_on',from).lt('received_on',to)]);
+ const bad=[c,b,e,i].find(x=>x.error);if(bad){toast(bad.error.message)}
+ cats=c.data||[];budgets=b.data||[];expenses=e.data||[];incomes=i.data||[];
+}
+const sum=a=>a.reduce((s,x)=>s+Number(x.amount),0);
+function render(){
+ const income=sum(incomes);
+ const kind=id=>cats.find(c=>c.id===id)?.kind;
+ const spent=sum(expenses.filter(x=>kind(x.category_id)!=='savings'));
+ const saved=sum(expenses.filter(x=>kind(x.category_id)==='savings'));
+ const left=income-spent-saved;
+ const now=new Date(),dim=new Date(month.getFullYear(),month.getMonth()+1,0).getDate();
+ const cur=now.getFullYear()===month.getFullYear()&&now.getMonth()===month.getMonth();
+ const days=cur?dim-now.getDate()+1:0;
+ const per=days?Math.max(left,0)/days:null;
+ const label=month.toLocaleString('en',{month:'long',year:'numeric'});
+ const cards=cats.map(c=>{
+  const s=sum(expenses.filter(x=>x.category_id===c.id)),b=budgets.find(x=>x.category_id===c.id),bud=b?Number(b.amount):0;
+  const pct=bud?Math.min(100,Math.round(s/bud*100)):0,over=bud&&s>bud;
+  let col='#16A34A',st='',cl='ok';
+  if(!bud){st='No budget set';cl='sm';col='#A1A1AA'}
+  else if(c.kind==='savings'){st=Math.round(s/bud*100)+'% of goal'}
+  else if(over){col='#DC2626';st='Over by '+money(s-bud);cl='bad'}
+  else if(s/bud>=.85){col='#D97706';st='Almost at limit';cl='warn'}
+  else st=s?'On track':'Not started';
+  return `<div class="card"><div class="ch"><span class="ico">${esc(c.name[0])}</span><b style="flex:1">${esc(c.name)}</b><span class="sm ${cl}" style="font-weight:600">${st}</span></div>
+  <div class="row" style="justify-content:flex-start;align-items:baseline;gap:6px"><span style="font-size:26px;font-weight:700">${money(s)}</span><span class="sm">${bud?'of '+money(bud):''}</span></div>
+  <div class="bar"><i style="width:${pct}%;background:${col}"></i></div>
+  <div class="row"><span class="sm">${bud?(over?'':money(bud-s)+' left'):''}</span><button class="link" onclick="editBudget('${c.id}')">${bud?'Edit':'Set'} budget</button></div></div>`}).join('');
+ const act=expenses.slice(0,15).map(x=>`<div class="it"><div><b>${esc(x.description||'Expense')}</b><div class="sm">${esc(cats.find(c=>c.id===x.category_id)?.name||'')} · ${esc(x.spent_on)}${x.source==='receipt'?' · receipt':''}</div></div><b>${money(x.amount)}</b></div>`).join('');
+ $('#root').innerHTML=`<div class="wrap">
+ <div class="top"><div><h1>Budget</h1><div class="mon"><button aria-label="Previous month" onclick="shift(-1)">‹</button>${label}<button aria-label="Next month" onclick="shift(1)">›</button></div></div>
+ <div class="acts"><button class="primary" onclick="addExpense()">+ Expense</button><button class="ghost" onclick="$('#file').click()">Scan receipt</button><button class="ghost" onclick="addIncome()">+ Income</button><button class="link" onclick="signOut()">Sign out</button></div></div>
+ <div class="kpis"><div class="card hero"><div class="k">${per===null?'Left this month':'You can spend per day'}</div><div class="v">${money(per===null?left:per)}</div><div class="k">${per===null?'':money(Math.max(left,0))+' left to live on · '+days+' day'+(days===1?'':'s')+' to go'}</div></div>
+ <div class="card"><div class="k">Income</div><div class="v">${money(income)}</div></div><div class="card"><div class="k">Spent</div><div class="v">${money(spent)}</div></div><div class="card"><div class="k">Saved</div><div class="v ok">${money(saved)}</div></div></div>
+ ${income?'':'<p class="sm">Add your income for this month to see how much you can spend each day.</p>'}
+ <h2>Where your money goes</h2><div class="grid">${cards}</div>
+ <h2>Recent activity</h2><div class="card list">${act||'<span class="sm">Nothing yet. Add an expense or scan a receipt.</span>'}</div></div>`;
+}
+async function refresh(){await load();render()}
+function shift(n){month=new Date(month.getFullYear(),month.getMonth()+n,1);refresh()}
+
+/* ---------- Dialogs ---------- */
+function modal(title,body,onSubmit,ok='Save'){
+ const d=$('#dlg');d.innerHTML=`<form id="mf"><h2>${esc(title)}</h2>${body}<p class="err" id="merr"></p><div class="row" style="justify-content:flex-end"><button type="button" class="ghost" onclick="$('#dlg').close()">Cancel</button><button class="primary">${ok}</button></div></form>`;
+ $('#mf').onsubmit=async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;try{await onSubmit(new FormData(e.target));d.close()}catch(x){$('#merr').textContent=x.message||String(x);b.disabled=false}};
+ d.showModal();
+}
+const catOpts=sel=>cats.map(c=>`<option value="${c.id}" ${c.id===sel?'selected':''}>${esc(c.name)}</option>`).join('');
+function addExpense(){
+ modal('Add expense',`<label>Amount (E)</label><input name="amount" type="number" step="0.01" min="0.01" required inputmode="decimal">
+ <label>Category</label><select name="cat">${catOpts()}</select><label>What was it?</label><input name="desc" placeholder="Optional">
+ <label>Date</label><input name="date" type="date" value="${ymd(new Date())}" required>`,
+ async f=>{const r=await sb.from('expenses').insert({category_id:f.get('cat'),amount:+f.get('amount'),description:f.get('desc')||null,spent_on:f.get('date')});if(r.error)throw r.error;await refresh()});
+}
+function addIncome(){
+ modal('Add income',`<label>Amount (E)</label><input name="amount" type="number" step="0.01" min="0.01" required inputmode="decimal">
+ <label>Source</label><input name="src" value="Salary" required><label>Date</label><input name="date" type="date" value="${ymd(new Date())}" required>`,
+ async f=>{const r=await sb.from('incomes').insert({source:f.get('src'),amount:+f.get('amount'),received_on:f.get('date')});if(r.error)throw r.error;await refresh()});
+}
+function editBudget(id){
+ const c=cats.find(x=>x.id===id),b=budgets.find(x=>x.category_id===id);
+ modal(c.name+' budget',`<label>Amount for ${esc(month.toLocaleString('en',{month:'long'}))} (E)</label><input name="amount" type="number" step="0.01" min="0" required value="${b?b.amount:''}" inputmode="decimal">`,
+ async f=>{const r=await sb.from('budgets').upsert({category_id:id,month:ymd(month),amount:+f.get('amount')},{onConflict:'category_id,month'});if(r.error)throw r.error;await refresh()});
+}
+
+/* ---------- Receipt scanning ---------- */
+$('#file').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)scan(f)};
+async function shrink(file){
+ const bmp=await createImageBitmap(file),k=Math.min(1,1600/Math.max(bmp.width,bmp.height));
+ const c=document.createElement('canvas');c.width=Math.round(bmp.width*k);c.height=Math.round(bmp.height*k);
+ c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
+ return new Promise(r=>c.toBlob(r,'image/jpeg',.85));
+}
+const KW=[[/bread|milk|chicken|beef|meat|rice|maize|mealie|egg|sugar|oil|flour|fruit|veg|cheese|juice|water|tomato|onion|potato|salt|tea|coffee|bean|fish|yog|cabbage|spinach/i,'Groceries'],
+ [/fuel|petrol|diesel|taxi|bus|kombi|ticket|toll/i,'Transport'],
+ [/soap|detergent|airtime|data|electric|tissue|toilet|wash|bleach|paraffin|candle/i,'Living (everyday)']];
+function guess(name){
+ for(const [re,cn] of KW){if(re.test(name)){const c=cats.find(x=>x.name===cn);if(c)return{cat:c.id,check:false}}}
+ const c=cats.find(x=>x.name==='Shopping')||cats[0];return{cat:c?.id,check:true};
+}
+function parse(text){
+ const lines=text.split('\n').map(l=>l.trim()).filter(Boolean),items=[];let total=null;
+ const skip=/sub-?total|vat|tax|change|cash|card|balance|tender|round|amount due|thank|tel\b|invoice|receipt|qty|discount|saving/i;
+ for(const l of lines){
+  const m=l.match(/^(.*?)[\sE]*?(\d{1,6}[.,]\d{2})\s*[A-Za-z]?$/);if(!m)continue;
+  const amt=parseFloat(m[2].replace(',','.'));if(!amt)continue;
+  if(/total/i.test(l)&&!/sub/i.test(l)){total=amt;continue}
+  const name=m[1].replace(/[^A-Za-z0-9 %&'\/.-]/g,' ').replace(/\s+/g,' ').trim();
+  if(skip.test(l)||name.length<2)continue;
+  items.push({name,amount:amt,...guess(name)});
+ }
+ const store=(lines.find(l=>/[A-Za-z]{3,}/.test(l))||'').replace(/[^A-Za-z0-9 &'.-]/g,' ').replace(/\s+/g,' ').trim().slice(0,60);
+ let date=ymd(new Date());const dm=text.match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})/);
+ if(dm){let[,d,mo,y]=dm.map(Number);if(y<100)y+=2000;const t=new Date(y,mo-1,d);if(t.getMonth()===mo-1&&t<=new Date()&&y>2000)date=ymd(t)}
+ return{items,total,store,date};
+}
+async function scan(file){
+ const d=$('#dlg');d.innerHTML='<h2>Reading receipt…</h2><p class="sm">This runs on your phone. <b id="prog">0%</b></p>';d.showModal();
+ try{
+  const blob=await shrink(file);
+  const r=await Tesseract.recognize(blob,'eng',{logger:m=>{if(m.status==='recognizing text'&&$('#prog'))$('#prog').textContent=Math.round(m.progress*100)+'%'}});
+  d.close();review(blob,r.data.text,parse(r.data.text));
+ }catch(x){d.innerHTML=`<h2>Couldn't read that photo</h2><p class="err">${esc(x.message||x)}</p><button class="ghost" onclick="$('#dlg').close()">Close</button>`}
+}
+function review(blob,text,p){
+ const rows=p.items.length?p.items:[{name:'',amount:'',...guess('')}];
+ const draw=()=>{
+  const t=rows.reduce((s,r)=>s+(+r.amount||0),0);
+  modal('Review receipt',`<p class="sm">${esc(p.store||'Receipt')} · ${esc(p.date)}</p>
+  <div class="v" style="font-size:28px;font-weight:700;color:#15803D" id="rt">${money(t)}</div>
+  <p class="sm">${p.total?'Receipt total read: '+money(p.total)+'. ':''}Categories are picked for you. Change any that look wrong.</p>
+  <div id="rows">${rows.map((r,i)=>`<div class="ritem ${r.check?'chk':''}"><input data-i="${i}" data-f="name" value="${esc(r.name)}" placeholder="Item"><input data-i="${i}" data-f="amount" type="number" step="0.01" min="0" value="${r.amount}" inputmode="decimal" placeholder="0.00">
+  <select data-i="${i}" data-f="cat">${catOpts(r.cat)}</select><button type="button" class="link" data-del="${i}">Remove</button></div>`).join('')}</div>
+  <button type="button" class="link" id="addrow">+ Add item</button>`,
+  async()=>{await saveReceipt(blob,text,p,rows)},'Save '+rows.length+' item'+(rows.length===1?'':'s'));
+  const box=$('#rows');
+  box.oninput=e=>{const i=e.target.dataset.i;if(i==null)return;const f=e.target.dataset.f;rows[i][f]=f==='amount'?e.target.value:e.target.value;if(f==='cat')rows[i].check=false;$('#rt').textContent=money(rows.reduce((s,r)=>s+(+r.amount||0),0))};
+  box.onclick=e=>{const i=e.target.dataset.del;if(i!=null){rows.splice(+i,1);if(!rows.length)rows.push({name:'',amount:'',...guess('')});draw()}};
+  $('#addrow').onclick=()=>{rows.push({name:'',amount:'',...guess('')});draw()};
+ };
+ draw();
+}
+async function saveReceipt(blob,text,p,rows){
+ const ok=rows.filter(r=>+r.amount>0&&r.cat);if(!ok.length)throw new Error('Add at least one item with an amount.');
+ const path=`${user.id}/${Date.now()}.jpg`;
+ const up=await sb.storage.from('receipts').upload(path,blob,{contentType:'image/jpeg'});if(up.error)throw up.error;
+ const total=ok.reduce((s,r)=>s+ +r.amount,0);
+ const rc=await sb.from('receipts').insert({store_name:p.store||null,purchase_date:p.date,total,image_path:path,status:'saved',ocr_raw:{text}}).select('id').single();if(rc.error)throw rc.error;
+ const a=await sb.from('receipt_items').insert(ok.map(r=>({receipt_id:rc.data.id,name:r.name||'Item',amount:+r.amount,category_id:r.cat,needs_check:!!r.check})));if(a.error)throw a.error;
+ const b=await sb.from('expenses').insert(ok.map(r=>({category_id:r.cat,receipt_id:rc.data.id,description:r.name||'Item',amount:+r.amount,spent_on:p.date,source:'receipt'})));if(b.error)throw b.error;
+ await refresh();toast(money(total)+' added to '+new Set(ok.map(r=>r.cat)).size+' categories');
+}
+</script>
+</body>
+</html>
